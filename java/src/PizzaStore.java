@@ -484,7 +484,7 @@ public class PizzaStore {
                 System.out.print("Enter type of item (e.g., drinks, sides): ");
                 String type = in.readLine().trim().toLowerCase();
                 esql.executeQueryAndPrintResult("SELECT * FROM Items WHERE LOWER(typeOfItem) = '" + type + "';");
-                break;
+                break; //case 2 is not working debugging required
             case 3:
                 System.out.print("Enter maximum price: ");
                 double priceLimit = Double.parseDouble(in.readLine());
