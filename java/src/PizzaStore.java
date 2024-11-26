@@ -526,7 +526,7 @@ public class PizzaStore {
             case 2:
                 System.out.print("Enter type of item (e.g., drinks, sides): ");
                 String type = in.readLine().trim().toLowerCase();
-                esql.executeQueryAndPrintResult("SELECT * FROM Items WHERE LOWER(typeOfItem) = '" + type + "';");
+                esql.executeQueryAndPrintResult("SELECT * FROM Items WHERE LOWER(typeOfItem) = ' " + type + "';");
                 break; //case 2 is not working debugging required
             case 3:
                 System.out.print("Enter maximum price: ");
@@ -551,6 +551,7 @@ public class PizzaStore {
 
    public static void placeOrder(PizzaStore esql, String authorisedUser) {
     try {
+        // Step 1: Get store ID
         System.out.print("Enter store ID: ");
         int storeID = Integer.parseInt(in.readLine());
 
@@ -558,34 +559,48 @@ public class PizzaStore {
         List<String> items = new ArrayList<>();
         List<Integer> quantities = new ArrayList<>();
 
+        // Step 2: Collect items and quantities
         while (true) {
             System.out.print("Enter item name (or 'done' to finish): ");
-            String itemName = in.readLine();
+            String itemName = in.readLine().trim();
             if (itemName.equalsIgnoreCase("done")) break;
 
             System.out.print("Enter quantity: ");
-            int quantity = Integer.parseInt(in.readLine());
+            int quantity = Integer.parseInt(in.readLine().trim());
 
+            // Validate item name and get price
             String query = String.format("SELECT price FROM Items WHERE itemName = '%s';", itemName);
             List<List<String>> result = esql.executeQueryAndReturnResult(query);
 
-            if (result.size() > 0) {
+            if (!result.isEmpty()) {
                 double price = Double.parseDouble(result.get(0).get(0));
                 totalPrice += price * quantity;
                 items.add(itemName);
                 quantities.add(quantity);
             } else {
-                System.out.println("Item not found.");
+                System.out.println("Item not found. Please try again.");
             }
         }
 
+        // Check if no items were added
+        if (items.isEmpty()) {
+            System.out.println("No items in the order. Aborting.");
+            return;
+        }
+
+        // Step 3: Determine the next orderID
+        String maxOrderIDQuery = "SELECT COALESCE(MAX(orderID), 0) + 1 FROM FoodOrder;";
+        List<List<String>> orderIDResult = esql.executeQueryAndReturnResult(maxOrderIDQuery);
+        int orderID = Integer.parseInt(orderIDResult.get(0).get(0));
+
+        // Step 4: Insert order into FoodOrder
         String insertOrder = String.format(
             "INSERT INTO FoodOrder (orderID, login, storeID, totalPrice, orderTimestamp, orderStatus) " +
-            "VALUES (nextval('foodorder_seq'), '%s', %d, %.2f, NOW(), 'placed');",
-            authorisedUser, storeID, totalPrice);
+            "VALUES (%d, '%s', %d, %.2f, NOW(), 'placed');",
+            orderID, authorisedUser, storeID, totalPrice);
         esql.executeUpdate(insertOrder);
 
-        int orderID = esql.getCurrSeqVal("foodorder_seq");
+        // Step 5: Insert items into ItemsInOrder
         for (int i = 0; i < items.size(); i++) {
             String insertItem = String.format(
                 "INSERT INTO ItemsInOrder (orderID, itemName, quantity) VALUES (%d, '%s', %d);",
@@ -593,11 +608,14 @@ public class PizzaStore {
             esql.executeUpdate(insertItem);
         }
 
-        System.out.println("Order placed successfully! Total Price: $" + totalPrice);
+        // Step 6: Confirm success
+        System.out.println("Order placed successfully!");
+        System.out.printf("Total Price: $%.2f\n", totalPrice);
     } catch (Exception e) {
         System.err.println("Error: " + e.getMessage());
     }
 }
+
 
    public static void viewAllOrders(PizzaStore esql)
    {
@@ -683,184 +701,176 @@ public class PizzaStore {
             System.err.println("Error: " + e.getMessage());
         }
    }
-   public static void updateOrderStatus(PizzaStore esql)
-   {
-        try 
-        {
-            System.out.print("Enter your username: ");
-            String username = in.readLine();
+   public static void updateOrderStatus(PizzaStore esql) {
+    try {
+        System.out.print("Enter your username: ");
+        String username = in.readLine();
 
-            List< List<String> > result = esql.executeQueryAndReturnResult(String.format("SELECT role FROM Users WHERE login = '%s';", username));
+        // Check if the user is authorized directly in the query
+        String roleQuery = String.format(
+            "SELECT COUNT(*) FROM Users WHERE login = '%s' AND (LOWER(role) = 'manager' OR LOWER(role) = 'driver');",
+            username
+        );
+        int authorizedCount = esql.executeQuery(roleQuery);
 
-            if(result.get(0).get(0).equalsIgnoreCase("Manager") || result.get(0).get(0).equalsIgnoreCase("Driver"))
-            {
-                System.out.print("Enter the orderID: ");
-                int orderID = Integer.parseInt(in.readLine());
-                System.out.print("Enter the new Order Status(incomplete, in progress or complete ): ");
-                String orderStatus = in.readLine();
-                esql.executeUpdate(String.format("UPDATE FoodOrder SET orderStatus = '%s' WHERE orderID = %d", orderStatus, orderID));
+        if (authorizedCount > 0) {
+            System.out.print("Enter the orderID: ");
+            int orderID = Integer.parseInt(in.readLine());
 
-                System.out.println("Order Status Updated Successfully!");
-            }
-            else
-            {
-                System.out.println("Contact a manager or driver for guidance!");
-                return;
-            }
+            System.out.print("Enter the new Order Status (incomplete, in progress, or complete): ");
+            String orderStatus = in.readLine().trim().toLowerCase();
 
-            
-        } 
-        catch (Exception e) 
-        {
-            System.err.println("Error: " + e.getMessage());
+            String updateQuery = String.format(
+                "UPDATE FoodOrder SET orderStatus = '%s' WHERE orderID = %d;",
+                orderStatus, orderID
+            );
+            esql.executeUpdate(updateQuery);
+
+            System.out.println("Order Status Updated Successfully!");
+        } else {
+            System.out.println("Access denied. Only Managers or Drivers can update order status.");
         }
-   }
-   public static void updateMenu(PizzaStore esql)
-   {
-        try 
-        {
-            System.out.print("Enter your username: ");
-            String username = in.readLine();
-            String newItemName = "";
-            String newIngredients = "";
-            String newType = "";
-            double priceLimit = 0.0;
-            String description = "";
-            List< List<String> > result = esql.executeQueryAndReturnResult(String.format("SELECT role FROM Users WHERE login = '%s';", username));
+    } catch (Exception e) {
+        System.err.println("Error: " + e.getMessage());
+    }
+}
 
-            if(result.get(0).get(0).equalsIgnoreCase("Manager"))
-            {
-                System.out.println("What would you like to update?");
-                System.out.println("1. Update existing item");
-                System.out.println("2. Add item");
-                int choice = readChoice();
 
-                switch (choice) {
-                    case 1:
-                        System.out.print("Enter the existing item name: ");
-                        String oldItemName = in.readLine();
-                        System.out.print("Enter your new item name: ");
-                        newItemName = in.readLine();
-                        System.out.print("Enter your new ingredients: ");
-                        newIngredients = in.readLine();
-                        System.out.print("Enter the new type of item (e.g., drinks, sides): ");
-                        newType = in.readLine().trim().toLowerCase();
-                        System.out.print("Enter the new price: ");
-                        priceLimit = Double.parseDouble(in.readLine());
-                        System.out.print("Enter the description: ");
-                        description = in.readLine();
+   public static void updateMenu(PizzaStore esql) {
+    try {
+        System.out.print("Enter your username: ");
+        String username = in.readLine();
 
-                        String updateQuery = String.format(
-                            "UPDATE Items SET itemName = '%s', ingredients = '%s', typeOfItem = '%s', price = %.2f, description = '%s' WHERE item = '%s';",
-                            newItemName, newIngredients, newType, priceLimit, description, oldItemName);
-                        esql.executeUpdate(updateQuery);
-                        System.out.println("Menu updated successfully.");
-                        break;
+        // Check if the user is a Manager
+        String roleQuery = String.format(
+            "SELECT COUNT(*) FROM Users WHERE login = '%s' AND LOWER(role) = 'manager';",
+            username
+        );
+        int isManager = esql.executeQuery(roleQuery);
 
-                    case 2:
-                        System.out.print("Enter your new item name: ");
-                        newItemName = in.readLine();
-                        System.out.print("Enter your new ingredients: ");
-                        newIngredients = in.readLine();
-                        System.out.print("Enter the new type of item (e.g., drinks, sides): ");
-                        newType = in.readLine().trim().toLowerCase();
-                        System.out.print("Enter the new price: ");
-                        priceLimit = Double.parseDouble(in.readLine());
-                        System.out.print("Enter the description: ");
-                        description = in.readLine();
+        if (isManager > 0) {
+            System.out.println("What would you like to update?");
+            System.out.println("1. Update existing item");
+            System.out.println("2. Add item");
+            int choice = readChoice();
 
-                        String newQuery = String.format("INSERT INTO Items(itemName,ingredients,typeOfItem,price,description) VALUES('%s','%s','%s', %.2f, '%s')");
-                        
-                        esql.executeUpdate(newQuery);
-                        System.out.println("Menu updated successfully.");
-                        break;
+            switch (choice) {
+                case 1:
+                    System.out.print("Enter the existing item name: ");
+                    String oldItemName = in.readLine();
+                    System.out.print("Enter your new item name: ");
+                    String newItemName = in.readLine();
+                    System.out.print("Enter your new ingredients: ");
+                    String newIngredients = in.readLine();
+                    System.out.print("Enter the new type of item (e.g., drinks, sides): ");
+                    String newType = in.readLine().trim().toLowerCase();
+                    System.out.print("Enter the new price: ");
+                    double priceLimit = Double.parseDouble(in.readLine());
+                    System.out.print("Enter the description: ");
+                    String description = in.readLine();
 
-                    default:
-                        System.out.println("Invalid choice. Please try again.");
-                }
+                    String updateQuery = String.format(
+                        "UPDATE Items SET itemName = '%s', ingredients = '%s', typeOfItem = '%s', price = %.2f, description = '%s' WHERE itemName = '%s';",
+                        newItemName, newIngredients, newType, priceLimit, description, oldItemName
+                    );
+                    esql.executeUpdate(updateQuery);
+                    System.out.println("Menu updated successfully.");
+                    break;
+
+                case 2:
+                    System.out.print("Enter your new item name: ");
+                    newItemName = in.readLine();
+                    System.out.print("Enter your new ingredients: ");
+                    newIngredients = in.readLine();
+                    System.out.print("Enter the new type of item (e.g., drinks, sides): ");
+                    newType = in.readLine().trim().toLowerCase();
+                    System.out.print("Enter the new price: ");
+                    priceLimit = Double.parseDouble(in.readLine());
+                    System.out.print("Enter the description: ");
+                    description = in.readLine();
+
+                    String newQuery = String.format(
+                        "INSERT INTO Items(itemName, ingredients, typeOfItem, price, description) VALUES ('%s', '%s', '%s', %.2f, '%s');",
+                        newItemName, newIngredients, newType, priceLimit, description
+                    );
+                    esql.executeUpdate(newQuery);
+                    System.out.println("Menu updated successfully.");
+                    break;
+
+                default:
+                    System.out.println("Invalid choice. Please try again.");
             }
-            else
-            {
-                System.out.println("Contact a manager or driver for guidance!");
-                return;
-            }
-
-            
-        } 
-        catch (Exception e) 
-        {
-            System.err.println("Error: " + e.getMessage());
+        } else {
+            System.out.println("Access denied. Only Managers can update the menu.");
         }
-   }
-   public static void updateUser(PizzaStore esql)
-   {
-        try 
-        {
-            System.out.print("Enter your username: ");
-            String username = in.readLine();
+    } catch (Exception e) {
+        System.err.println("Error: " + e.getMessage());
+    }
+}
 
-            List< List<String> > result = esql.executeQueryAndReturnResult(String.format("SELECT role FROM Users WHERE login = '%s';", username));
+   public static void updateUser(PizzaStore esql) {
+    try {
+        System.out.print("Enter your username: ");
+        String username = in.readLine();
 
-            if(result.get(0).get(0).equalsIgnoreCase("Manager"))
-            {
-                String query = "";
-                System.out.print("Enter the current username to update: ");
-                String oldName = in.readLine();
-                System.out.print("1. Change role");
-                System.out.print("2. Change password");
-                System.out.print("3. Change phone number");
-                System.out.print("4. Change favorite item");
-                System.out.print("5. Change username");
-                int choice = readChoice();
+        // Check if the user is a Manager
+        String roleQuery = String.format(
+            "SELECT COUNT(*) FROM Users WHERE login = '%s' AND LOWER(role) = 'manager';",
+            username
+        );
+        int isManager = esql.executeQuery(roleQuery);
 
-                switch(choice)
-                {
-                    case 1:
-                        System.out.print("Enter the new role: ");
-                        String newRole = in.readLine();
-                        query = String.format("UPDATE Users SET role = '%s' WHERE login = '%s';",newRole, oldName);
-                        break;
-                    case 2:
-                        System.out.print("Enter the new password: ");
-                        String newPassword = in.readLine();
-                        query = String.format("UPDATE Users SET password = '%s' WHERE login = '%s';",newPassword, oldName);
-                        break;
-                    case 3:
-                        System.out.print("Enter the new phone number: ");
-                        String newNumber = in.readLine();
-                        query = String.format("UPDATE Users SET phoneNum = '%s' WHERE login = '%s';",newNumber, oldName);
-                        break;
-                    case 4:
-                        System.out.print("Enter the new favorite item: ");
-                        String newFavorite = in.readLine();
-                        query = String.format("UPDATE Users SET favoriteItems = '%s' WHERE login = '%s';",newFavorite, oldName);
-                        break;
-                    case 5:
-                        System.out.print("Enter the new username: ");
-                        String newName = in.readLine();
-                        query = String.format("UPDATE Users SET login = '%s' WHERE login = '%s';",newName, oldName);
-                        break;
-                    default: 
-                         System.out.println("Invalid choice. Please try again.");
-                }
+        if (isManager > 0) {
+            System.out.print("Enter the current username to update: ");
+            String oldName = in.readLine();
 
-                esql.executeUpdate(query);
+            System.out.println("1. Change role");
+            System.out.println("2. Change password");
+            System.out.println("3. Change phone number");
+            System.out.println("4. Change favorite item");
+            System.out.println("5. Change username");
+            int choice = readChoice();
 
-                System.out.println("User Updated Successfully!");
-            }
-            else
-            {
-                System.out.println("Contact a manager or driver for guidance!");
-                return;
+            String query = "";
+            switch (choice) {
+                case 1:
+                    System.out.print("Enter the new role: ");
+                    String newRole = in.readLine();
+                    query = String.format("UPDATE Users SET role = '%s' WHERE login = '%s';", newRole, oldName);
+                    break;
+                case 2:
+                    System.out.print("Enter the new password: ");
+                    String newPassword = in.readLine();
+                    query = String.format("UPDATE Users SET password = '%s' WHERE login = '%s';", newPassword, oldName);
+                    break;
+                case 3:
+                    System.out.print("Enter the new phone number: ");
+                    String newNumber = in.readLine();
+                    query = String.format("UPDATE Users SET phoneNum = '%s' WHERE login = '%s';", newNumber, oldName);
+                    break;
+                case 4:
+                    System.out.print("Enter the new favorite item: ");
+                    String newFavorite = in.readLine();
+                    query = String.format("UPDATE Users SET favoriteItems = '%s' WHERE login = '%s';", newFavorite, oldName);
+                    break;
+                case 5:
+                    System.out.print("Enter the new username: ");
+                    String newName = in.readLine();
+                    query = String.format("UPDATE Users SET login = '%s' WHERE login = '%s';", newName, oldName);
+                    break;
+                default:
+                    System.out.println("Invalid choice. Please try again.");
             }
 
-            
-        } 
-        catch (Exception e) 
-        {
-            System.err.println("Error: " + e.getMessage());
+            esql.executeUpdate(query);
+            System.out.println("User Updated Successfully!");
+        } else {
+            System.out.println("Access denied. Only Managers can update user information.");
         }
-   }
+    } catch (Exception e) {
+        System.err.println("Error: " + e.getMessage());
+    }
+}
 
 
 }//end PizzaStore
