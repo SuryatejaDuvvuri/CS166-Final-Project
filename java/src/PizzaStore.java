@@ -10,45 +10,6 @@
  *
  */
 
-import java.awt.Graphics;
-import java.awt.Dimension;
-import java.awt.Image;
-import java.awt.Insets;
-import java.awt.Color;
-import java.awt.Font;
-import java.awt.GridLayout;
-import java.awt.BorderLayout; 
-import java.awt.CardLayout;
-import java.awt.FlowLayout;
- 
-import javax.swing.JFrame;	
-import javax.swing.JPanel;
- 
-import javax.swing.JButton;
-import javax.swing.JRadioButton;
-import javax.swing.ButtonGroup;
-import javax.swing.JCheckBox;
-import javax.swing.JScrollPane;
-import javax.swing.JTextField;
-import javax.swing.JTextArea;
-import javax.swing.JLabel;
-import javax.swing.JSlider;
-import javax.swing.JMenuBar;
-import javax.swing.JMenu;
-import javax.swing.JMenuItem;
- 
-import java.awt.event.ActionListener;
-import java.awt.event.ActionEvent;
-import java.awt.event.MouseListener;
-import java.awt.event.MouseEvent;
-import java.awt.event.KeyListener;	
-import java.awt.event.KeyEvent;
-import java.io.File;
-import java.util.Scanner;
-import java.io.IOException;
-import javax.imageio.ImageIO;
-import javax.swing.Timer;
-
 import java.sql.DriverManager;
 import java.sql.Connection;
 import java.sql.Statement;
